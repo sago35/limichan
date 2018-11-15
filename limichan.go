@@ -2,11 +2,6 @@ package limichan
 
 // Worker ...
 type Worker interface {
-	Fn(lj LimichanJob)
-}
-
-// LimichanJob ...
-type LimichanJob interface {
 }
 
 // Limichan ...
@@ -29,11 +24,11 @@ func (lc *Limichan) AddWorker(w Worker) {
 }
 
 // Do ...
-func (lc *Limichan) Do(lj LimichanJob) {
+func (lc *Limichan) Do(fn func(Worker)) {
 	select {
 	case w := <-lc.worker:
 		go func() {
-			w.Fn(lj)
+			fn(w)
 			lc.worker <- w
 		}()
 	}
