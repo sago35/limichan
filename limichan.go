@@ -17,10 +17,12 @@ type Job interface {
 
 // Limichan ...
 type Limichan struct {
-	worker chan Worker
-	ctx    context.Context
-	wg     sync.WaitGroup
-	errors []error
+	worker  chan Worker
+	ctx     context.Context
+	wg      sync.WaitGroup
+	err     error
+	cancel  func()
+	errOnce sync.Once
 }
 
 // Option ...
@@ -42,18 +44,21 @@ func MaxWorker(m int) Option {
 }
 
 // New ...
-func New(ctx context.Context, opt ...Option) *Limichan {
+func New(ctx context.Context, opt ...Option) (*Limichan, context.Context) {
 	opts := defaultLimichanOption
 	for _, o := range opt {
 		o(&opts)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	lc := &Limichan{
 		worker: make(chan Worker, opts.maxWorker),
 		ctx:    ctx,
+		cancel: cancel,
 	}
 
-	return lc
+	return lc, ctx
 }
 
 // AddWorker ...
@@ -71,7 +76,6 @@ func (lc *Limichan) AddWorker(w Worker) error {
 func (lc *Limichan) Do(j Job) error {
 	select {
 	case <-lc.ctx.Done():
-		lc.errors = append(lc.errors, lc.ctx.Err())
 		return lc.ctx.Err()
 	case w := <-lc.worker:
 		lc.wg.Add(1)
@@ -79,7 +83,12 @@ func (lc *Limichan) Do(j Job) error {
 			defer lc.wg.Done()
 			err := w.Do(lc.ctx, j)
 			if err != nil {
-				lc.errors = append(lc.errors, err)
+				lc.errOnce.Do(func() {
+					lc.err = err
+					if lc.cancel != nil {
+						lc.cancel()
+					}
+				})
 			}
 			lc.worker <- w
 		}()
@@ -88,16 +97,10 @@ func (lc *Limichan) Do(j Job) error {
 }
 
 // Wait ...
-func (lc *Limichan) Wait() {
+func (lc *Limichan) Wait() error {
 	lc.wg.Wait()
-}
-
-// Errors ...
-func (lc *Limichan) Errors() []error {
-	return lc.errors
-}
-
-// ClearErrors ...
-func (lc *Limichan) ClearErrors() {
-	lc.errors = lc.errors[:0]
+	if lc.cancel != nil {
+		lc.cancel()
+	}
+	return lc.err
 }

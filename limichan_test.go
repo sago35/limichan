@@ -43,7 +43,7 @@ func TestLimichan(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
 	defer cancel()
 
-	l := New(ctx, MaxWorker(5))
+	l, ctx := New(ctx, MaxWorker(5))
 
 	w1 := &worker{name: "w1", waitMs: 10}
 	w2 := &worker{name: "w2", waitMs: 30}
@@ -68,14 +68,7 @@ func TestLimichan(t *testing.T) {
 		}
 	}
 
-	l.Wait()
-
-	if len(l.Errors()) > 0 {
-		log.Print("--")
-		for _, err := range l.Errors() {
-			log.Print(err.Error())
-		}
+	if err := l.Wait(); err != nil {
+		log.Print(err)
 	}
-
-	//t.Error("error")
 }
